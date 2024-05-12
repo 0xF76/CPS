@@ -11,13 +11,13 @@ author = Dict{Symbol, String}(
 
 # Sygnały ciągłe
 cw_rectangular(t::Real; T=1.0)::Real = abs(t) < T/2 ? 1 : 0
-cw_triangle(t::Real; T=1.0)::Real = abs(t) < T/2 ? 1 - 1/(T/2)*abs(t) : 0
-cw_literka_M(t::Real; T=1.0)::Real = missing
+cw_triangle(t::Real; T=1.0)::Real = abs(t) < T ? 1 - 1/T*abs(t) : 0
+cw_literka_M(t::Real; T=1.0)::Real = abs(t) < T/2 ? abs(t) : 0
 cw_literka_U(t::Real; T=1.0)::Real = missing
 
-ramp_wave(t::Real)::Real = missing
+ramp_wave(t::Real)::Real = t - floor(t)
 sawtooth_wave(t::Real)::Real = -(t-floor(t))
-triangular_wave(t::Real)::Real = 2*abs(t-floor(t+1/2))
+triangular_wave(t::Real)::Real = 4*abs(t-floor(t+1/2))
 square_wave(t::Real)::Real =  sign(sin(2*π*t))
 pulse_wave(t::Real, ρ::Real=0.2)::Real = (t - floor(t)) ≤ ρ ? 1 : 0
 impulse_repeater(g::Function, t1::Real, t2::Real)::Function = missing
@@ -97,21 +97,32 @@ end
 
 # Kwantyzacja
 quantize(x::Real; L::AbstractVector)::Real = missing
-SQNR(N::Integer)::Real = missing
-SNR(Psignal, Pnoise)::Real = Psignal/Pnoise
+SQNR(N::Integer)::Real = 1.76 + 6.02*N # 6.02*N [dB] is also correct
+SNR(Psignal, Pnoise)::Real = 10*log10(Psignal/Pnoise)
 
 
 # Obliczanie DFT
 function dtft(f::Real; signal::AbstractVector, fs::Real)
-   missing
+    val::ComplexF64 = 0.0
+    for n in eachindex(signal)
+        dtft_val += signal[n] * exp(-2 * f/fs * n)
+    end
+    
+    return val
 end
 
 function dft(x::AbstractVector)::Vector
-    missing
+    N = length(x)
+    n = 0:N-1
+    k = 0:N-1
+    return exp.(-1im * 2 * π/N * k * n') * x
 end
 
 function idft(X::AbstractVector)::Vector
-   missing
+   N = length(X)
+    n = 0:N-1
+    k = 0:N-1
+    return exp.(-1im * 2 * π/N * k * n')^(-1) * X
 end
 
 function rdft(x::AbstractVector)::Vector
@@ -136,6 +147,73 @@ end
 
 function ifft(X::AbstractVector)::Vector
     idft(X) # Może da rade lepiej?
+end
+
+fftfreq(N::Integer, fs::Real)::Vector = missing
+rfftfreq(N::Integer, fs::Real)::Vector = missing
+amplitude_spectrum(x::AbstractVector, w::AbstractVector=rect(length(x)))::Vector = missing
+power_spectrum(x::AbstractVector, w::AbstractVector=rect(length(x)))::Vector = missing
+psd(x::AbstractVector, w::AbstractVector=rect(length(x)), fs::Real=1.0)::Vector = missing
+
+function periodogram(x::AbstractVector, w::AbstractVector=rect(length(x)), fs::Real=1.0)::Vector
+    missing
+end
+
+
+
+function stft(x::AbstractVector, w::AbstractVector, L::Integer)::Matrix
+    missing
+end
+
+
+function istft(X::AbstractMatrix{<:Complex}, w::AbstractVector{<:Real}, L::Integer)::AbstractVector{<:Real}
+    missing
+end
+
+function conv(f::Vector, g::Vector)::Vector
+    y = zeros(length(f)+length(g)-1)
+    for m = 1:length(f)
+        for n = 1:length(g)
+            y[m+n-1] += f[m]*g[n]
+        end
+    end
+end
+
+function fast_conv(f::Vector, g::Vector)::Vector
+    N = length(f)
+    M = length(g)
+    K = N + M - 1
+    while(length(g) < K)
+        append!(g,0)
+    end
+
+    while(length(f) < K)
+        append!(f,0)
+    end
+
+    g = g[end:-1:1]
+    g = [g[end]; g[1:end-1]]
+
+    c = zeros(K)
+
+    for i = 1:K
+        c[i] = sum(f.*g)    
+        g = [g[end]; g[1:end-1]]
+    end
+
+    return c
+end
+
+function overlap_add(x::Vector, h::Vector, L::Integer)::Vector
+    missing
+end
+
+function overlap_save(x::Vector, h::Vector, L::Integer)::Vector
+    missing
+end
+
+function lti_filter(b::Vector, a::Vector, x::Vector)::Vector
+    missing
 end
 
 end
