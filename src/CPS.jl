@@ -20,7 +20,7 @@ sawtooth_wave(t::Real)::Real = -(t-floor(t))
 triangular_wave(t::Real)::Real = 4*abs(t-floor(t+1/2))
 square_wave(t::Real)::Real =  sign(sin(2*π*t))
 pulse_wave(t::Real, ρ::Real=0.2)::Real = (t - floor(t)) ≤ ρ ? 1 : 0
-impulse_repeater(g::Function, t1::Real, t2::Real)::Function = missing
+impulse_repeater(g::Function, t1::Real, t2::Real)::Function = x -> g(mod(x - t1, t2 - t1) + t1)
 
 function ramp_wave_bl(t; A=1.0, T=1.0, band=20.0)
     missing
@@ -141,8 +141,17 @@ function ifft_radix2_dif_r(X::AbstractVector)::Vector
    missing
 end
 
+# NOTE: THIS IS ABSOLUTELY NOT THE BEST WAY TO DO IT, BUT IT WORKS
 function fft(x::AbstractVector)::Vector
-    dft(x) # Może da rade lepiej?
+    if length(x) ≤ 1
+        return x
+    else
+        N = length(x)
+        Xᵒ = fft(x[2:2:end])
+        Xᵉ = fft(x[1:2:end])
+        factors = exp.(-2im * π * (0:(N/2 - 1)) / N)
+        return [Xᵉ .+ factors .* Xᵒ; Xᵉ .- factors .* Xᵒ]
+    end
 end
 
 function ifft(X::AbstractVector)::Vector
