@@ -1,6 +1,7 @@
 module CPS
 
 using LinearAlgebra
+using OffsetArrays
 
 author = Dict{Symbol, String}(
     :index => "414702",
@@ -43,15 +44,33 @@ function sawtooth_wave_bl(t; A=1.0, T=1.0, band=20.0)
 end
 
 function triangular_wave_bl(t; A=1.0, T=1.0, band=20.0)
-    missing
+    sum = 0
+    k = 1
+    while (arg = (2π * (2*k - 1))/T) ≤ band * 2π
+        sum += ((-1)^k * sin(arg * t)) / ((2*k - 1)^2)
+        k += 1
+    end
+    return -8 * A / π^2 * sum
 end
 
 function square_wave_bl(t; A=1.0, T=1.0, band=20.0)
-    missing
+    sum = 0
+    k = 1
+    while (arg = (2π * (2*k - 1))/T) ≤ band * 2π
+        sum += sin(arg * t) / (2*k - 1)
+        k += 1
+    end
+    return 4 * A / π * sum
 end
 
 function pulse_wave_bl(t; ρ=0.2, A=1.0, T=1.0, band=20.0)
-    missing
+    sum = 0
+    k = 1
+    while (arg = 2π*k*(1/T)) ≤ band * 2π
+        sum += (1/k) * sin(π*k*(ρ/T)) * cos(arg * t)
+        k += 1
+    end
+    return A * (ρ/T) + 2 * A / π * sum
 end
 
 
@@ -108,7 +127,7 @@ function interpolate(
 end
 
 # Kwantyzacja
-quantize(x::Real; L::AbstractVector)::Real = missing
+quantize(L::AbstractVector)::Function = x -> L[argmin(abs.(-L .+ x))]
 SQNR(N::Integer)::Real = 1.76 + 6.02*N # 6.02*N [dB] is also correct
 SNR(Psignal, Pnoise)::Real = 10*log10(Psignal/Pnoise)
 
@@ -138,11 +157,24 @@ function idft(X::AbstractVector)::Vector
 end
 
 function rdft(x::AbstractVector)::Vector
-   missing
+   N = length(x)
+   w = OffsetArray(
+        [exp(-1im * 2 * π/N * n) for n in 0:N-1],
+        0:N-1
+   )
+
+   [
+    sum((
+        x[n+1] * w[(n*k)%N] for n in 0:N-1
+        )) for k in 0:(N÷2)
+   ]
+
 end
 
 function irdft(X::AbstractVector, N::Integer)::Vector
-   missing
+    S = length(X)
+    X₁ = [n <= S ? X[n] : conj(X[2S-n]) for n in 1:N]
+    idft(X₁)
 end
 
 function fft_radix2_dit_r(x::AbstractVector)::Vector
