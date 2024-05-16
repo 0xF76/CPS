@@ -23,11 +23,23 @@ pulse_wave(t::Real, ρ::Real=0.2)::Real = (t - floor(t)) ≤ ρ ? 1 : 0
 impulse_repeater(g::Function, t1::Real, t2::Real)::Function = x -> g(mod(x - t1, t2 - t1) + t1)
 
 function ramp_wave_bl(t; A=1.0, T=1.0, band=20.0)
-    missing
+    sum = 0
+    k = 1
+    while (arg = (2π*k)/T) ≤ band * 2π
+        sum += (-1)^k * sin(arg * t) / k
+        k += 1
+    end
+    return -2 * A / π * um
 end
 
 function sawtooth_wave_bl(t; A=1.0, T=1.0, band=20.0)
-    missing
+    sum = 0
+    k = 1
+    while (arg = (2π*k)/T) ≤ band * 2π
+        sum += (-1)^k * sin(arg * t) / k
+        k += 1
+    end
+    return 2 * A / π * sum
 end
 
 function triangular_wave_bl(t; A=1.0, T=1.0, band=20.0)
@@ -59,11 +71,11 @@ kronecker(n::Integer)::Real = n == 0 ? 1 : 0
 heaviside(n::Integer)::Real = n ≥ 0 ? 1 : 0
 
 # Okna
-rect(N::Integer)::AbstractVector{<:Real} = missing
-triang(N::Integer)::AbstractVector{<:Real} = missing
-hanning(N::Integer)::AbstractVector{<:Real} = missing
-hamming(N::Integer)::AbstractVector{<:Real} = missing
-blackman(N::Integer)::AbstractVector{<:Real} = missing
+rect(N::Integer)::AbstractVector{<:Real} = ones(N)
+triang(N::Integer)::AbstractVector{<:Real} = [1 - (2abs(n - ((N - 1) / 2))) / (N - 1) for n = 0:N-1]
+hanning(N::Integer)::AbstractVector{<:Real} = [0.5*(1 - cos((2π*n)/(N-1))) for n = 0:N-1]
+hamming(N::Integer)::AbstractVector{<:Real} = [0.54 - 0.46*cos((2π*n)/(N-1)) for n = 0:N-1]
+blackman(N::Integer)::AbstractVector{<:Real} = [0.42 - 0.5*cos((2π*n)/(N-1)) + 0.08*cos((4π*n)/(N-1)) for n = 0:N-1]
 
 # Parametry sygnałów
 mean(x::AbstractVector)::Number = sum(x)/length(x)
@@ -141,7 +153,7 @@ function ifft_radix2_dif_r(X::AbstractVector)::Vector
    missing
 end
 
-# NOTE: THIS IS ABSOLUTELY NOT THE BEST WAY TO DO IT, BUT IT WORKS
+# TODO: THIS IS ABSOLUTELY NOT THE BEST WAY TO DO IT, BUT IT WORKS
 function fft(x::AbstractVector)::Vector
     if length(x) ≤ 1
         return x
