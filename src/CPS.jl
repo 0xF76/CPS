@@ -79,13 +79,10 @@ function rand_signal_bl(f1::Real, f2::Real)::Function
     missing
 end
 
-
 # Sygnały dyskretne
 kronecker(n::Integer)::Real = n == 0 ? 1 : 0
 heaviside(n::Integer)::Real = n ≥ 0 ? 1 : 0
 
-
-#TODO: DO POPRAWY
 # Okna
 rect(N::Integer)::AbstractVector{<:Real} = ones(N)
 triang(N::Integer)::AbstractVector{<:Real} = [1 - (2abs(n - ((N - 1) / 2))) / (N - 1) for n = 0:N-1]
@@ -120,7 +117,14 @@ function interpolate(
     s::AbstractVector,
     kernel::Function=sinc
 )
-    missing
+    return t -> begin
+        sum = 0
+        Δt = m[2]-m[1]
+        for n in 1:length(s)
+            sum += kernel((t-m[n])/Δt)*s[n]
+        end
+        return sum
+    end
 end
 
 # Kwantyzacja
@@ -169,8 +173,8 @@ end
 
 function irdft(X::AbstractVector, N::Integer)::Vector
     S = length(X)
-    X₁ = [n <= S ? X[n] : conj(X[2S-n]) for n in 1:N]
-    idft(X₁)
+    X = [n <= S ? X[n] : conj(X[2S-n+(N % 2 == 0 ? 0 : 1)]) for n in 1:N]
+    real.(idft(X))
 end
 
 function fft_radix2_dit_r(x::AbstractVector)::Vector
@@ -181,7 +185,7 @@ function ifft_radix2_dif_r(X::AbstractVector)::Vector
    missing
 end
 
-# THIS IS ABSOLUTELY NOT THE BEST WAY TO DO IT, BUT IT WORKS
+# this is absolutely not optimised, but works
 function fft(x::AbstractVector)::Vector
     if length(x) ≤ 1
         return x
@@ -274,7 +278,24 @@ function overlap_save(x::Vector, h::Vector, L::Integer)::Vector
 end
 
 function lti_filter(b::Vector, a::Vector, x::Vector)::Vector
-    missing
+    N = length(x)
+    K = length(a)
+    a /= a[1]
+    M = length(b)
+    y = zeros(N)
+    for n in 1:N
+        for m in 1:M
+            if n-m+1 > 0 && n-m+1<=N
+                y[n]+=b[m]*x[n-m+1]
+            end
+        end
+        for k in 2:K
+            if n-k+1>0 && n-k+1<=N
+                y[n]-=a[k]*y[n-k+1]
+            end
+        end
+    end
+    return y
 end
 
 function filtfilt(b::Vector, a::Vector, x::Vector)::Vector
@@ -282,28 +303,64 @@ function filtfilt(b::Vector, a::Vector, x::Vector)::Vector
 end
 
 function lti_amp(f::Real, b::Vector, a::Vector)::Real
-    missing
+    licznik = 0
+    mianownik = 0
+    for l in 1:length(b)
+        licznik+=b[l]*cispi(2f)^-(l-1)
+    end
+    for m in 1:length(a)
+        mianownik+=a[m]*cispi(2f)^-(m-1)
+    end
+    return abs(licznik/mianownik)
 end
 
 function lti_phase(f::Real, b::Vector, a::Vector)::Real
-    missing
+    licznik = 0
+    mianownik = 0
+    for l in 1:length(b)
+        licznik+=b[l]*cispi(2f)^-(l-1)
+    end
+    for m in 1:length(a)
+        mianownik+=a[m]*cispi(2f)^-(m-1)
+    end
+    return angle(licznik/mianownik)
 end
 
 
 function firwin_lp_I(order, F0)
-    missing
+    n = -order/2:order/2
+    h = zeros(length(n))
+    for i in 1:length(n)
+        h[i] = 2*F0*sinc(2*F0*n[i])
+    end
+    return h
 end
 
 function firwin_hp_I(order, F0)
-    missing
+    n = -order/2:order/2
+    h = zeros(length(n))
+    for i in 1:length(n)
+        h[i] = kronecker(n[i]) - 2*F0*sinc(2*F0*n[i])
+    end
+    return h
 end
 
 function firwin_bp_I(order, F1, F2)
-    missing
+    n = -order/2:order/2
+    h = zeros(length(n))
+    for i in 1:length(n)
+        h[i] = 2*F2*sinc(2*F2*n[i]) - 2*F1*sinc(2*F1*n[i])
+    end
+    return h
 end
 
 function firwin_bs_I(order, F1, F2)
-    missing
+    n = -order/2:order/2
+    h = zeros(length(n))
+    for i in 1:length(n)
+        h[i] = kronecker(n[i]) - (2*F2*sinc(2*F2*n[i]) - 2*F1*sinc(2*F1*n[i]))
+    end
+    return h
 end
 
 function firwin_lp_II(N, F0)
@@ -321,7 +378,5 @@ end
 function resample(x::Vector, M::Int, N::Int)
     missing
 end
-
-
 
 end
