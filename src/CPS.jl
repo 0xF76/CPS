@@ -55,7 +55,14 @@ function triangular_wave_bl(t; A=1.0, T=1.0, band=20.0)
 end
 
 function square_wave_bl(t; A=1.0, T=1.0, band=20.0)
-    missing
+    signal = 0
+    n = 1
+    while (arg = 2π * (2n - 1) * (1 / T)) < band * 2π
+        signal += sin.(arg * t) / (2n - 1)
+        n += 1
+    end
+    signal *= 4 * A / π
+    return signal
 end
 
 function pulse_wave_bl(t; ρ=0.2, A=1.0, T=1.0, band=20.0)
@@ -71,12 +78,17 @@ function pulse_wave_bl(t; ρ=0.2, A=1.0, T=1.0, band=20.0)
 end
 
 
-function impuse_repeater_bl(g::Function, t0::Real, t1::Real, band::Real)::Function
+function impulse_repeater_bl(g::Function, t0::Real, t1::Real, band::Real)::Function
     missing
 end
 
 function rand_signal_bl(f1::Real, f2::Real)::Function
-    missing
+    f = f1.+(f2-f1)*rand(1000)
+    ϕ = -π .+ 2π .* rand(1000)
+    A = randn(1000)
+    A ./= sqrt(sum(A .^ 2) / 1000)
+    
+    return t -> sum(@. A * sin(2π * f * t + ϕ))    
 end
 
 # Sygnały dyskretne
@@ -98,18 +110,43 @@ power(x::AbstractVector)::Real = energy(x)/length(x)
 rms(x::AbstractVector)::Real = √power(x)
 
 function running_mean(x::AbstractVector, M::Integer)::Vector
-    missing
+    N = -M÷2:M÷2
+    y = zeros(Float64,length(x))
+    for n in 1:length(x)
+        for m in N
+            if n+m > 0 && n+m <=length(x)
+            y[n]+=x[n+m]
+            end
+        end
+    end
+    return y/M
 end
 
 function running_energy(x::AbstractVector, M::Integer)::Vector
-    missing
+    N = -M÷2:M÷2
+    y = zeros(Float64,length(x))
+    for n in 1:length(x)
+        for m in N
+            if n+m > 0 && n+m <=length(x)
+            y[n]+=x[n+m]^2
+            end
+        end
+    end
+    return y
 end
 
 function running_power(x::AbstractVector, M::Integer)::Vector
-    missing
+    N = -M÷2:M÷2
+    y = zeros(Float64,length(x))
+    for n in 1:length(x)
+        for m in N
+            if n+m > 0 && n+m <=length(x)
+            y[n]+=x[n+m]^2
+            end
+        end
+    end
+    return y/M
 end
-
-
 
 # Próbkowanie
 function interpolate(
@@ -129,7 +166,7 @@ end
 
 # Kwantyzacja
 quantize(L::AbstractVector)::Function = x -> L[argmin(abs.(-L .+ x))]
-SQNR(N::Integer)::Real = 1.76 + 6.02*N # 6.02*N [dB] is also correct
+SQNR(N::Integer)::Real = 1.76 + 6.02*N
 SNR(Psignal, Pnoise)::Real = 10*log10(Psignal/Pnoise)
 
 # Obliczanie DFT
@@ -178,12 +215,56 @@ function irdft(X::AbstractVector, N::Integer)::Vector
 end
 
 function fft_radix2_dit_r(x::AbstractVector)::Vector
-   missing
+    function bitreverse(n, bits)
+        reversed = 0
+        for i in 1:bits
+            reversed <<= 1
+            reversed |= (n & 1)
+            n >>= 1
+        end
+        return reversed
+    end
+
+    N = length(x)
+    bits = Int(log2(N))
+    X = copy(ComplexF64.(x))
+
+    # Bit-reversal permutation
+    for i in 1:N
+        j = bitreverse(i - 1, bits) + 1
+        if i < j
+            X[i], X[j] = X[j], X[i]
+        end
+    end
+
+    n₁ = 0
+    n₂ = 1
+    for i=1:bits
+      n₁ = n₂ 
+      n₂ *= 2
+      
+      step_angle = -2π/n₂
+      angle = 0
+      for j=1:n₁
+        factors = exp(im*angle)
+        angle += step_angle
+        
+        for k=j:n₂:N
+          X[k], X[k+n₁] = X[k] + factors * X[k+n₁], X[k] - factors * X[k+n₁]
+        end
+      end
+    end
+    
+    return X   
 end
 
 function ifft_radix2_dif_r(X::AbstractVector)::Vector
-   missing
+    X_R = [Complex(imag(z), real(z)) for z in X]
+    x_r = fft_radix2_dit_r(X_R)
+    x_n = [Complex(imag(z), real(z)) for z in x_r]
+    return x_n/length(x_n)
 end
+
 
 # this is absolutely not optimised, but works
 function fft(x::AbstractVector)::Vector
@@ -199,15 +280,18 @@ function fft(x::AbstractVector)::Vector
 end
 
 function ifft(X::AbstractVector)::Vector
-    idft(X) # Może da rade lepiej?
+    X_R = [Complex(imag(z), real(z)) for z in X]
+    x_r = fft(X_R)
+    x_n = [Complex(imag(z), real(z)) for z in x_r]
+    return x_n/length(x_n)
 end
 
 
-fftfreq(N::Integer, fs::Real)::Vector = missing
-rfftfreq(N::Integer, fs::Real)::Vector = missing
-amplitude_spectrum(x::AbstractVector, w::AbstractVector=rect(length(x)))::Vector = missing
-power_spectrum(x::AbstractVector, w::AbstractVector=rect(length(x)))::Vector = missing
-psd(x::AbstractVector, w::AbstractVector=rect(length(x)), fs::Real=1.0)::Vector = missing
+fftfreq(N::Int, fp::Float64) = fp * vcat(0:(N ÷ 2), -((N-1) ÷ 2):-1) / N
+rfftfreq(N::Integer, fs::Real)::Vector = (0:N÷2) * fs / N
+amplitude_spectrum(x::AbstractVector, w::AbstractVector=rect(length(x)))::Vector = abs.(fft(x.*w))/(length(x)*mean(w))
+power_spectrum(x::AbstractVector, w::AbstractVector=rect(length(x)))::Vector = abs.(fft(x.*w).^2)/(length(x)*energy(w))
+psd(x::AbstractVector, w::AbstractVector=rect(length(x)), fs::Real=1.0)::Vector = abs.(fft(x.*2).^2)/(length(x)*energy(w)*fs)
 
 function periodogram(
     x::AbstractVector,
@@ -245,36 +329,57 @@ function conv(f::Vector, g::Vector)::Vector
 end
 
 function fast_conv(f::Vector, g::Vector)::Vector
-    N = length(f)
-    M = length(g)
-    K = N + M - 1
-    while(length(g) < K)
-        append!(g,0)
-    end
+    N = length(f) + length(g) - 1
 
-    while(length(f) < K)
-        append!(f,0)
-    end
+    f_padded = vcat(f, zeros(N - length(f)))
+    g_padded = vcat(g, zeros(N - length(g)))
 
-    g = g[end:-1:1]
-    g = [g[end]; g[1:end-1]]
+    F = fft(f_padded)
+    G = fft(g_padded)
+    Y = F .* G
+    y = real(ifft(Y))
 
-    c = zeros(K)
-
-    for i = 1:K
-        c[i] = sum(f.*g)    
-        g = [g[end]; g[1:end-1]]
-    end
-
-    return c
+    return y
 end
 
 function overlap_add(x::Vector, h::Vector, L::Integer)::Vector
-    missing
+    N = length(x)
+    M = length(h)
+    P = L + M - 1
+    
+    result = zeros(Float64, N + M - 1)
+    
+    for i in 1:L:N
+        segment = x[i:min(i+L-1, N)]
+        
+        conv_segment = fast_conv(segment, h)
+        
+        start_idx = i
+        end_idx = min(i + P - 1, length(result))
+        result[start_idx:end_idx] += conv_segment[1:(end_idx - start_idx + 1)]
+    end
+    
+    return result
 end
 
 function overlap_save(x::Vector, h::Vector, L::Integer)::Vector
-    missing
+    M = length(h)
+    N = L + M - 1
+
+    padded_h = vcat(h, zeros(N - M))
+    H = fft(padded_h)
+
+    y = []
+    padded_x = vcat(zeros(M - 1), x, zeros(N - 1))
+
+    for k in 1:L:(length(padded_x)-N+1)
+        xk = padded_x[k:k+N-1]
+        Xk = fft(xk)
+        Yk = ifft(H .* Xk)
+        y = vcat(y, real(Yk[M:end]))
+    end
+
+    return y[1:(length(x)+M-1)]
 end
 
 function lti_filter(b::Vector, a::Vector, x::Vector)::Vector
@@ -299,7 +404,21 @@ function lti_filter(b::Vector, a::Vector, x::Vector)::Vector
 end
 
 function filtfilt(b::Vector, a::Vector, x::Vector)::Vector
-    missing
+    y = zeros(Float64,length(x))
+    for n in 1:length(x)
+        for m in 1:length(b)
+            if n-m+1 > 0 && n-m+1 <= length(x)
+                y[n]+=b[m]*x[n-m+1]
+            end
+        end
+        for k in 2:length(a)
+            if n-k+1>0 && n-k+1<= length(y)
+                y[n]-=a[k]*y[n-k+1]
+            end
+        end
+    end
+
+    return y
 end
 
 function lti_amp(f::Real, b::Vector, a::Vector)::Real
