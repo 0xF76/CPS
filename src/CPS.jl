@@ -320,7 +320,27 @@ function periodogram(
     w::AbstractVector=rect(length(x)),
     L::Integer = 0,
     fs::Real=1.0)::Vector
-    missing
+    N = length(x)
+    K = length(w)
+    step = K - L
+    num_segments = div(N - L, step) + 1
+    Pxx = zeros(Float64, K)
+
+    for i in 0:(num_segments-1)
+        start = i * step + 1
+        segment = x[start:min(start+K-1,N)]
+
+        if length(segment) < K
+            segment = vcat(segment, zeros(K - length(segment)))
+        end
+
+        segment_psd = psd(segment, w, fs)
+
+        Pxx += segment_psd
+
+    end
+    
+    return Pxx / num_segments
 end
 
 
