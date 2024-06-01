@@ -2,6 +2,7 @@ module CPS
 
 using LinearAlgebra
 using OffsetArrays
+using QuadGK
 
 author = Dict{Symbol, String}(
     :index => "414702",
@@ -78,9 +79,30 @@ function pulse_wave_bl(t; ρ=0.2, A=1.0, T=1.0, band=20.0)
 end
 
 
-function impulse_repeater_bl(g::Function, t0::Real, t1::Real, band::Real)::Function
-    missing
+function impulse_repeater_bl(g::Function, t1::Real, t2::Real, band::Real)::Function
+    T = t2 - t1
+    ω₀ = 2π / T
+    n = Int((2π * band) / ω₀)
+    a₀ = 1 / T * quadgk(g, t1, t2)[1]
+    an = zeros(Float64, n)
+    bn = zeros(Float64, n)
+
+    for i in 1:n
+        an[i] = 2 / T * quadgk(t -> g(t) * cos(ω₀ * i * t), t1, t2)[1]
+        bn[i] = 2 / T * quadgk(t -> g(t) * sin(ω₀ * i * t), t1, t2)[1]
+    end
+
+    function fourier_series(t)
+        result = a₀ / 2
+        for i in 1:n
+            result += an[i] * cos(ω₀ * i * t) + bn[i] * sin(ω₀ * i * t)
+        end
+        return result
+    end
+
+    return fourier_series
 end
+
 
 function rand_signal_bl(f1::Real, f2::Real)::Function
     f = f1.+(f2-f1)*rand(1000)
@@ -157,7 +179,7 @@ function interpolate(
     return t -> begin
         sum = 0
         Δt = m[2]-m[1]
-        for n in 1:length(s)
+        for n in eachindex(s)
             sum += kernel((t-m[n])/Δt)*s[n]
         end
         return sum
@@ -304,12 +326,46 @@ end
 
 
 function stft(x::AbstractVector, w::AbstractVector, L::Integer)::Matrix
-    missing
+    N = length(x)
+    K = length(w)
+    step = K - L
+    num_segments = div(N - L, step) + 1
+    stft_matrix = zeros(ComplexF64,(K ÷ 2 + 1,num_segments))
+    for i in 0:(num_segments-1)
+        start = i * step + 1
+        segment = x[start:min(start+K-1,N)]
+        if length(segment) < K
+            segment = vcat(segment, zeros(K - length(segment)))
+        end
+
+        segment = segment .* w
+        segment_fft = rfft(segment)
+        stft_matrix[:,i+1] = segment_fft
+    end
+    return stft_matrix
 end
 
 
 function istft(X::AbstractMatrix{<:Complex}, w::AbstractVector{<:Real}, L::Integer)::AbstractVector{<:Real}
-    missing
+    K = length(w)
+    step = K - L
+    num_segments = size(X, 2)
+    N = (num_segments - 1) * step + K
+
+    x_reconstructed = zeros(Float64, N)
+    window_sum = zeros(Float64, N)
+
+    for i in 0:(num_segments-1)
+        start = i * step + 1
+        segment_ifft = irfft(X[:,i+1], K)
+
+        x_reconstructed[start:start+K-1] += segment_ifft .* w
+        window_sum[start:start+K-1] += w
+    end
+
+    x_reconstructed ./= window_sum
+    
+    return x_reconstructed
 end
 
 function conv(f::Vector, g::Vector)::Vector
@@ -448,37 +504,25 @@ end
 
 function firwin_lp_I(order, F0)
     n = -order/2:order/2
-    h = zeros(length(n))
-    for i in 1:length(n)
-        h[i] = 2*F0*sinc(2*F0*n[i])
-    end
+    h = [2F0*sinc(2*F0*n[i]) for i in eachindex(n)]
     return h
 end
 
 function firwin_hp_I(order, F0)
     n = -order/2:order/2
-    h = zeros(length(n))
-    for i in 1:length(n)
-        h[i] = kronecker(n[i]) - 2*F0*sinc(2*F0*n[i])
-    end
+    h = [kronecker(n[i]) - 2F0*sinc(2F0*n[i]) for i in eachindex(n)]
     return h
 end
 
 function firwin_bp_I(order, F1, F2)
     n = -order/2:order/2
-    h = zeros(length(n))
-    for i in 1:length(n)
-        h[i] = 2*F2*sinc(2*F2*n[i]) - 2*F1*sinc(2*F1*n[i])
-    end
+    h = [2F2*sinc(2F2*n[i]) - 2F1*sinc(2F1*n[i]) for i in eachindex(n)]
     return h
 end
 
 function firwin_bs_I(order, F1, F2)
     n = -order/2:order/2
-    h = zeros(length(n))
-    for i in 1:length(n)
-        h[i] = kronecker(n[i]) - (2*F2*sinc(2*F2*n[i]) - 2*F1*sinc(2*F1*n[i]))
-    end
+    h = [kronecker(n[i]) - (2F2*sinc(2F2*n[i]) - 2F1*sinc(2F1*n[i])) for i in eachindex(n)]
     return h
 end
 
@@ -491,7 +535,9 @@ function firwin_bp_II(N, F1, F2)
 end
 
 function firwin_diff(N::Int)
-    missing
+    x = -N:1:N
+    h = [cospi(n)/n for n in x]
+    return h
 end
 
 function resample(x::Vector, M::Int, N::Int)
