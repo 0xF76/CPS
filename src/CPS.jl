@@ -334,6 +334,8 @@ function periodogram(
             segment = vcat(segment, zeros(K - length(segment)))
         end
 
+        segment = segment .* w
+        
         segment_psd = psd(segment, w, fs)
 
         Pxx += segment_psd
