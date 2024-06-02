@@ -361,7 +361,7 @@ function stft(x::AbstractVector, w::AbstractVector, L::Integer)::Matrix
         end
 
         segment = segment .* w
-        segment_fft = rfft(segment)
+        segment_fft = rdft(segment)
         stft_matrix[:,i+1] = segment_fft
     end
     return stft_matrix
