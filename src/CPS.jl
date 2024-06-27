@@ -1,8 +1,6 @@
 module CPS
 
 using LinearAlgebra
-using OffsetArrays
-using QuadGK
 
 author = Dict{Symbol, String}(
     :index => "414702",
@@ -80,16 +78,28 @@ end
 
 
 function impulse_repeater_bl(g::Function, t1::Real, t2::Real, band::Real)::Function
+    function integrate(f, a, b, n=1000)
+        h = (b - a) / n
+        sum = 0.5 * (f(a) + f(b))
+        
+        for i in 1:(n-1)
+            x = a + i * h
+            sum += f(x)
+        end
+        
+        return sum * h
+    end
+    
     T = t2 - t1
     ω₀ = 2π / T
     n = Int((2π * band) / ω₀)
-    a₀ = 1 / T * quadgk(g, t1, t2)[1]
+    a₀ = 1 / T * integrate(g, t1, t2)[1]
     an = zeros(Float64, n)
     bn = zeros(Float64, n)
 
     for i in 1:n
-        an[i] = 2 / T * quadgk(t -> g(t) * cos(ω₀ * i * t), t1, t2)[1]
-        bn[i] = 2 / T * quadgk(t -> g(t) * sin(ω₀ * i * t), t1, t2)[1]
+        an[i] = 2 / T * integrate(t -> g(t) * cos(ω₀ * i * t), t1, t2)[1]
+        bn[i] = 2 / T * integrate(t -> g(t) * sin(ω₀ * i * t), t1, t2)[1]
     end
 
     function fourier_series(t)
@@ -216,19 +226,12 @@ function idft(X::AbstractVector)::Vector
 end
 
 function rdft(x::AbstractVector)::Vector
-   N = length(x)
-   w = OffsetArray(
-        [exp(-1im * 2 * π/N * n) for n in 0:N-1],
-        0:N-1
-   )
-
-   [
-    sum((
-        x[n+1] * w[(n*k)%N] for n in 0:N-1
-        )) for k in 0:(N÷2)
-   ]
-
-end
+    N = length(x)
+    w = [exp(-1im * 2 * π / N * n) for n in 0:N-1]
+ 
+    [sum(x[n+1] * w[(n * k) % N + 1] for n in 0:N-1) for k in 0:(N ÷ 2)]
+ end
+ 
 
 function irdft(X::AbstractVector, N::Integer)::Vector
     S = length(X)
@@ -320,31 +323,25 @@ function periodogram(
     w::AbstractVector=rect(length(x)),
     L::Integer = 0,
     fs::Real=1.0)::Vector
+
     N = length(x)
     K = length(w)
-    step = K - L
-    num_segments = div(N - L, step) + 1
-    Pxx = zeros(Float64, K)
-
-    for i in 0:(num_segments-1)
-        start = i * step + 1
-        segment = x[start:min(start+K-1,N)]
-
-        if length(segment) < K
-            segment = vcat(segment, zeros(K - length(segment)))
-        end
-
-        segment = segment .* w
-        
-        segment_psd = psd(segment, w, fs)
-
-        Pxx += segment_psd
-
+    if L == 0
+        L = K
     end
-    
-    return Pxx / num_segments
+    M = div(N - K, L) + 1
+    Pxx = zeros(K)
+    for m in 0:M-1
+        start = m * L + 1
+        if start + K - 1 > N
+            break
+        end
+        segment = x[start:start+K-1] .* w
+        X = fft(segment)
+        Pxx += abs2.(X) / (sum(abs2, w) * fs)
+    end
+    return Pxx
 end
-
 
 
 function stft(x::AbstractVector, w::AbstractVector, L::Integer)::Matrix
@@ -549,21 +546,26 @@ function firwin_bs_I(order, F1, F2)
 end
 
 function firwin_lp_II(N, F0)
-    missing
-end
-
-function firwin_bp_II(N, F1, F2)
-    missing
-end
-
-function firwin_diff(N::Int)
-    x = -N:1:N
-    h = [cospi(n)/n for n in x]
+    n = range(start=-N/2,stop=N/2,length=N)
+    h = [2F0*sinc(2*F0*n[i]) for i in eachindex(n)]
     return h
 end
 
+function firwin_bp_II(N, F1, F2)
+    n = range(start=-N/2,stop=N/2,length=N)
+    h = [2F2*sinc(2F2*n[i]) - 2F1*sinc(2F1*n[i]) for i in eachindex(n)]
+    return h
+end
+
+firwin_diff(N::Int) = [n == 0 ? 0 : cospi(n)/n for n in -N:N]
+
 function resample(x::Vector, M::Int, N::Int)
-    missing
+    oiriginal_idx = 1:length(x)
+    new_length = (length(x)*M)÷N
+    new_idx = range(start=1,stop=length(x),length=new_length)
+    interp = interpolate(oiriginal_idx,x)
+    y = [interp(t) for t in new_idx]
+    return y
 end
 
 end
